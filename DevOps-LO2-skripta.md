@@ -1,22 +1,37 @@
-# DevOps — LO2 skripta (Managing and creating container images)
+# DevOps — LO2 (Upravljanje i izrada slika kontejnera)
 
-> Ispitne bilješke, kolegij **Intro to DevOps** (Algebra/Bernays). Praktični ispit **25.6. u 18:30**.
-> Na ispitu dozvoljeno: službene doke (Podman/Docker/k8s/minikube/Red Hat) + **vlastite GitHub bilješke**. **AI zabranjen.**
-> Format: **zadatak po zadatak**, svaki flag i linija razloženi, sve začkoljice (gotchas) označene, na kraju 3-rečenični sažetak.
-> Sve odrađeno **hands-on** na ispitnom VM-u (preko VPN-a), **bez sudo**, rootless Podman.
+> Ispitne bilješke za ishod LO2 kolegija Intro to DevOps. Pokrivaju izradu, upravljanje i prijenos slika kontejnera kroz Containerfile i Podman.
+>
+> Okruženje: rootless Podman, minikube, kubectl, bez `sudo`. Sve odrađeno na ispitnom VM-u.
+
+## Rječnik kratica
+
+- **ARG** — varijabla dostupna samo pri buildu slike (build-time).
+- **ENV** — varijabla okruženja koja ostaje u slici i pokrenutom kontejneru (run-time).
+- **CMD** — zadana naredba/argumenti kontejnera, lako pregaziva pri pokretanju.
+- **ENTRYPOINT** — fiksni dio naredbe kontejnera.
+- **OCI** — Open Container Initiative; standardni format slike (Podmanov default).
+- **UID** — jedinstveni identifikator korisnika (User ID).
+- **CVE** — javno objavljena sigurnosna ranjivost (Common Vulnerabilities and Exposures).
+- **URL** — jedinstvena adresa resursa (Uniform Resource Locator).
+- **JSON** — tekstualni format za zapis podataka (JavaScript Object Notation).
+- **HTTP / HTTPS** — protokol za prijenos weba (HTTPS je sigurna inačica).
+- **OAuth** — protokol za autorizaciju bez dijeljenja lozinke.
+- **CLI** — sučelje naredbenog retka (Command-Line Interface).
+- **VM** — virtualni stroj (Virtual Machine).
 
 ---
 
-## 0. STVARI KOJE SE PONAVLJAJU (zapamti jednom, vrijedi za sve zadatke)
+## 0. Stvari koje se ponavljaju (vrijede za sve zadatke)
 
 ### Folder-struktura
-Krov je `~/devops` (ili `~/lo2-XX` direktno — svejedno). Svaki zadatak u svom podfolderu da se imena i build kontekst ne miješaju:
+Krov je `~/devops` (ili `~/lo2-XX` izravno). Svaki zadatak ide u svoj podfolder da se imena i build kontekst ne miješaju:
 ```bash
 mkdir -p ~/lo2-XX && cd ~/lo2-XX
 ```
-- `mkdir -p` — napravi mapu; `-p` = "ne buni se ako već postoji" (+ stvori roditeljske mape po potrebi).
-- `&&` — "napravi prvo, pa **ako uspije**, napravi drugo". (Jedan `&` = pokreni u pozadini i ne čekaj → `cd` bi pao jer mapa još ne postoji. Zamka koja se javila uživo.)
-- `cd ~/lo2-XX` — uđi u mapu. `~` = tvoj home (`/home/student`).
+- `mkdir -p` — stvara mapu; `-p` = "ne buni se ako već postoji" (+ stvara roditeljske mape po potrebi).
+- `&&` — "napravi prvo, pa **ako uspije**, napravi drugo". (Jedan `&` = pokreće u pozadini i ne čeka → `cd` bi pao jer mapa još ne postoji. Zamka koja se javila uživo.)
+- `cd ~/lo2-XX` — ulazak u mapu. `~` = home korisnika (`/home/student`).
 
 ### Layeri (slojevi) — temelj cijelog LO2
 - Image je **složen od layera**. Svaka instrukcija u Containerfileu (`FROM`, `RUN`, `COPY`, `ENV`...) stvara **jedan novi layer** povrh prethodnog.
@@ -33,25 +48,25 @@ podman build -t ime:tag -f Containerfile .
 - `.` — **build kontekst** = mapa čiji se sadržaj šalje build procesu kao materijal za `COPY`/`ADD`. Točka = trenutna mapa. **Obavezan argument** (build uvijek mora znati odakle vuče datoteke, makar ih ne koristio). Sve u toj mapi (osim onog u `.containerignore`) se zapakira i pošalje.
 - `-f` i `.` su **neovisni**: `-f` kaže *gdje je recept*, `.` kaže *odakle materijal*. Mogu biti različite mape.
 
-### Heredoc `<< 'EOF'` (kako upisujemo Containerfile)
+### Heredoc `<< 'EOF'` (upisivanje Containerfilea)
 ```bash
 cat > Containerfile << 'EOF'
 ...sadržaj...
 EOF
 ```
-- `cat > Containerfile` — preusmjeri ono što slijedi **u** datoteku `Containerfile` (`>` = prepiši ispočetka; `>>` bi dodavao).
-- `<< 'EOF'` — "čitaj sve do retka koji kaže `EOF`". Navodnici oko `'EOF'` = bash **NE dira** `$...` u tijelu (upiše doslovno, da varijable kasnije popuni podman/sh, a ne shell pri pisanju datoteke). Dobra navika i kad nema varijabli.
+- `cat > Containerfile` — preusmjerava ono što slijedi **u** datoteku `Containerfile` (`>` = prepisuje ispočetka; `>>` bi dodavao).
+- `<< 'EOF'` — "čitaj sve do retka koji kaže `EOF`". Navodnici oko `'EOF'` = bash **NE dira** `$...` u tijelu (upisuje se doslovno, da varijable kasnije popuni podman/sh, a ne shell pri pisanju datoteke). Dobra navika i kad nema varijabli.
 
 ### CMD sintaksa
 - **Exec forma (preporučeno):** `CMD ["program", "arg1", "arg2"]` — JSON polje, bez shella, signali (Ctrl+C, stop) rade čisto.
 - **Shell forma:** `CMD program arg1` — vrti se kroz `/bin/sh -c`, signali ne dolaze čisto do programa (LO5 #11).
 
 ### `--rm` za "zaviri i baci"
-`podman run --rm ...` = pokreni privremeni kontejner i obriši ga čim završi. Koristi se kad samo želimo nešto provjeriti (verzija, lista paketa), a ne ostavljati kontejner.
+`podman run --rm ...` = pokreće privremeni kontejner i briše ga čim završi. Koristi se kad treba samo nešto provjeriti (verzija, lista paketa), bez ostavljanja kontejnera.
 
 ---
 
-## ZADATAK 1 — ARG za odabir base-tag-a pri buildu (`--build-arg`)
+## Zadatak 1 — ARG za odabir base-tag-a pri buildu (`--build-arg`)
 
 > Write a Containerfile that uses an ARG to choose the base-image tag at build time (--build-arg), and build it twice with different values.
 
@@ -71,19 +86,19 @@ podman run --rm argtest:319   # -> 3.19.x
 
 **Razlomljeno:**
 - `ARG ALPINE_TAG=3.20` — deklarira **build-time varijablu** s default vrijednosti `3.20`. `ARG` iznad `FROM` smije se koristiti u samom `FROM`.
-- `FROM alpine:${ALPINE_TAG}` — baza čiji tag dolazi iz varijable. `${...}` = "uvrsti vrijednost varijable".
-- `--build-arg ALPINE_TAG=3.19` — pri buildu pregazi default vrijednost ARG-a. Tako isti Containerfile gradi različite verzije.
-- `CMD ["cat", "/etc/alpine-release"]` — ispiše točnu verziju Alpinea da vidimo koja je baza ušla.
+- `FROM alpine:${ALPINE_TAG}` — baza čiji tag dolazi iz varijable. `${...}` = uvrštavanje vrijednosti varijable.
+- `--build-arg ALPINE_TAG=3.19` — pri buildu pregazuje default vrijednost ARG-a. Tako isti Containerfile gradi različite verzije.
+- `CMD ["cat", "/etc/alpine-release"]` — ispisuje točnu verziju Alpinea radi uvida koja je baza ušla.
 
 **Začkoljica:**
 - **`ARG` je samo build-time — NE preživi u kontejner.** Unutar pokrenutog kontejnera ta varijabla ne postoji (za run-time treba `ENV`, vidi #15).
-- Ako drugi build ne pokaže novu vrijednost → keš. Dodaj `--no-cache` (vidi #12).
+- Ako drugi build ne pokaže novu vrijednost → keš. Dodaje se `--no-cache` (vidi #12).
 
-**Sažetak:** `ARG` je varijabla koja postoji **samo dok traje build**, s default vrijednosti koju pri buildu pregaziš s `--build-arg`. Time isti Containerfile parametriziraš (npr. biraš tag baze) bez mijenjanja datoteke. Vrijednost se ne vidi unutar pokrenutog kontejnera — za to služi `ENV`.
+**Sažetak:** `ARG` je varijabla koja postoji **samo dok traje build**, s default vrijednosti koja se pri buildu pregazi s `--build-arg`. Time se isti Containerfile parametrizira (npr. odabir taga baze) bez mijenjanja datoteke. Vrijednost se ne vidi unutar pokrenutog kontejnera — za to služi `ENV`.
 
 ---
 
-## ZADATAK 2 — Multi-stage build (artefakt u jednoj fazi → samo rezultat u finalni image)
+## Zadatak 2 — Multi-stage build (artefakt u jednoj fazi → samo rezultat u finalni image)
 
 > Write a multi-stage Containerfile that builds an artifact in one stage and copies only the result into a minimal final image; compare the final image size to a single-stage build.
 
@@ -113,22 +128,22 @@ podman images multi    # finalni ~10 MB umjesto ~270+ MB
 
 **Razlomljeno:**
 - `FROM golang:1.22 AS builder` — prva faza, dobiva ime `builder` (`AS`). Ima cijeli Go kompajler (~270 MB).
-- `WORKDIR /src` — radni direktorij unutar image-a (stvori ga ako ne postoji i uđi u njega). Sve relativne putanje idu odavde.
-- `COPY main.go .` — kopiraj izvorni kod u `/src`. `.` = trenutni WORKDIR.
-- `RUN go build -o app main.go` — kompajliraj u binarij `app`. `-o app` = ime izlaza.
+- `WORKDIR /src` — radni direktorij unutar image-a (stvara se ako ne postoji i postaje trenutni). Sve relativne putanje idu odavde.
+- `COPY main.go .` — kopira izvorni kod u `/src`. `.` = trenutni WORKDIR.
+- `RUN go build -o app main.go` — kompajlira u binarij `app`. `-o app` = ime izlaza.
 - `FROM alpine:3.20` — **druga faza počinje ispočetka** na maloj bazi. Sve iz prve faze (kompajler) ostaje izvan.
-- `COPY --from=builder /src/app /app` — uzmi **samo** gotov binarij iz faze `builder` i ubaci u finalni image. `--from=builder` = "kopiraj iz te faze, ne iz konteksta".
-- `CMD ["/app"]` — pokreni binarij.
+- `COPY --from=builder /src/app /app` — uzima **samo** gotov binarij iz faze `builder` i ubacuje u finalni image. `--from=builder` = kopiranje iz te faze, ne iz konteksta.
+- `CMD ["/app"]` — pokreće binarij.
 
 **Začkoljica:**
-- Poanta je da **build-alat (kompajler) ostaje izvan finalnog image-a** — nosiš samo rezultat. Ogromna ušteda (270 MB → 10 MB).
+- Poanta je da **build-alat (kompajler) ostaje izvan finalnog image-a** — prenosi se samo rezultat. Ogromna ušteda (270 MB → 10 MB).
 - Faze se referenciraju imenom (`AS builder`) ili rednim brojem (`--from=0`).
 
 **Sažetak:** Multi-stage build dijeli Containerfile na više `FROM` faza; u jednoj se kompajlira/gradi s teškim alatima, a u finalnu se `COPY --from=` prenosi **samo gotov artefakt**. Finalni image tako ne nosi kompajler ni izvorni kod — desetke puta je manji. Faze se imenuju s `AS`.
 
 ---
 
-## ZADATAK 3 — `.containerignore` (isključi datoteke iz build konteksta)
+## Zadatak 3 — `.containerignore` (isključi datoteke iz build konteksta)
 
 > Add a .containerignore file and demonstrate that ignored files are excluded from the build context / not copied.
 
@@ -151,19 +166,19 @@ podman run --rm ignoretest:1.0   # vidi data.txt, NE vidi secret.txt
 ```
 
 **Razlomljeno:**
-- `echo "tajna" > secret.txt` — `echo` ispiše tekst, `>` ga preusmjeri u datoteku (stvori/prepiši).
+- `echo "tajna" > secret.txt` — `echo` ispisuje tekst, `>` ga preusmjerava u datoteku (stvara/prepisuje).
 - `.containerignore` — popis (jedan uzorak po retku) datoteka koje se **NE šalju** u build kontekst → `COPY` ih ne može pokupiti. (Ekvivalent Dockerovog `.dockerignore`.)
-- `COPY . /app` — kopiraj **sve iz konteksta** u `/app`. Kontekst je već "očišćen" jer je `secret.txt` izbačen.
-- `CMD ["ls", "/app"]` — izlistaj što je stvarno ušlo.
+- `COPY . /app` — kopira **sve iz konteksta** u `/app`. Kontekst je već "očišćen" jer je `secret.txt` izbačen.
+- `CMD ["ls", "/app"]` — izlistava što je stvarno ušlo.
 
 **Začkoljica (javila se uživo):**
 - **`COPY requires at least two arguments`** → fali **razmak**: mora biti `COPY . /app` (točka, RAZMAK, odredište), NE `COPY ./app`. Bez razmaka Podman vidi samo jedan argument.
 
-**Sažetak:** `.containerignore` izbacuje navedene datoteke iz build konteksta, pa ih `COPY .` ne pokupi — koristi se za tajne, smeće i velike nepotrebne datoteke. Sintaksa je jedan uzorak po retku. Pazi na razmak u `COPY . /app` (točka i odredište su dva odvojena argumenta).
+**Sažetak:** `.containerignore` izbacuje navedene datoteke iz build konteksta, pa ih `COPY .` ne pokupi — koristi se za tajne, smeće i velike nepotrebne datoteke. Sintaksa je jedan uzorak po retku. Treba paziti na razmak u `COPY . /app` (točka i odredište su dva odvojena argumenta).
 
 ---
 
-## ZADATAK 4 — Tri taga odjednom + konvencija `registry/namespace/name:tag`
+## Zadatak 4 — Tri taga odjednom + konvencija `registry/namespace/name:tag`
 
 > Build an image and apply three tags at once (name:1.0, name:1, name:latest); explain the registry/namespace/name:tag convention.
 
@@ -181,19 +196,19 @@ podman images myapp   # tri retka, ISTI IMAGE ID
 - Više `-t` u istom buildu = **jedan image, više imena (tagova)**. Svi pokazuju na isti hash → isti IMAGE ID u listi.
 - **Konvencija punog imena:** `registry/namespace/name:tag`
   - `registry` — gdje image živi (`docker.io`, `quay.io`). Ako se izostavi → podrazumijeva se Docker Hub.
-  - `namespace` — račun/organizacija (`library` za službene, `tomislavb16` za tvoj).
+  - `namespace` — račun/organizacija (`library` za službene, `tomislavb16` za vlastiti).
   - `name` — ime image-a.
   - `tag` — verzija/oznaka. Ako se izostavi → **`latest`**.
 
 **Začkoljica:**
-- **`latest` NIJE "najnovije"** — to je samo **default oznaka** koja se uzme kad ne navedeš tag. Image označen `latest` može biti star; ime ne garantira ništa.
+- **`latest` NIJE "najnovije"** — to je samo **default oznaka** koja se uzme kad se ne navede tag. Image označen `latest` može biti star; ime ne garantira ništa.
 - Tagovi su samo **pokazivači** na isti image ID (kao više naljepnica na istoj kutiji).
 
 **Sažetak:** Više `-t` zastavica daje jednom image-u više tagova koji svi pokazuju na isti IMAGE ID. Puno ime ide po konvenciji `registry/namespace/name:tag`, gdje izostavljeni registry znači Docker Hub, a izostavljeni tag znači `latest`. `latest` je default oznaka, ne jamstvo da je image najnoviji.
 
 ---
 
-## ZADATAK 5 — `podman history` i smanjenje broja slojeva
+## Zadatak 5 — `podman history` i smanjenje broja slojeva
 
 > Inspect an image's layer history with podman history and explain how to reduce the number of layers.
 
@@ -204,8 +219,8 @@ podman history --no-trunc --format "{{.Size}}\t{{.CreatedBy}}" myapp:1.0
 
 **Razlomljeno:**
 - `podman history <img>` — prikaže **layer po layer**: svaka instrukcija (`RUN`, `COPY`, `ENV`...) = jedan red, s veličinom koju je dodao.
-- `--no-trunc` — ne skraćuj dugačke naredbe (pokaži cijele).
-- `--format "{{.Size}}\t{{.CreatedBy}}"` — ispiši samo veličinu i naredbu koja je stvorila layer. `\t` = tab (poravnanje). Go-template sintaksa.
+- `--no-trunc` — ne skraćuje dugačke naredbe (prikazuje cijele).
+- `--format "{{.Size}}\t{{.CreatedBy}}"` — ispisuje samo veličinu i naredbu koja je stvorila layer. `\t` = tab (poravnanje). Go-template sintaksa.
 
 **Kako smanjiti broj slojeva:**
 ```dockerfile
@@ -219,15 +234,15 @@ RUN apt-get update && \
     apt-get install -y curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 ```
-- Spoji `RUN`-ove s `&&` i `\` (nastavak retka).
-- Koristi multi-stage (zadatak #2).
-- Kombiniraj `COPY` gdje ima smisla.
+- Spajanje `RUN`-ova s `&&` i `\` (nastavak retka).
+- Korištenje multi-stage builda (zadatak #2).
+- Kombiniranje `COPY` naredbi gdje ima smisla.
 
 **Sažetak:** `podman history` pokazuje slojeve image-a redom, sa zaslugom svakog za veličinu. Manje slojeva = spajanje više `RUN` naredbi u jednu s `&&` i `\`, plus multi-stage build. Ovo direktno smanjuje veličinu i lakše je za održavanje.
 
 ---
 
-## ZADATAK 6 — Non-root `USER` + zapisiv `WORKDIR`
+## Zadatak 6 — Non-root `USER` + zapisiv `WORKDIR`
 
 > Write a Containerfile that sets a non-root USER and a writable WORKDIR; run it and confirm whoami is not root.
 
@@ -248,21 +263,21 @@ podman run --rm nonroot:1.0 sh -c 'touch /data/x && echo OK'   # -> OK (WORKDIR 
 ```
 
 **Razlomljeno:**
-- `adduser -D -u 1001 appuser` — stvori korisnika `appuser`. `-D` = bez lozinke (disabled password, dovoljno za kontejner). `-u 1001` = fiksni UID.
-- `mkdir -p /data && chown appuser:appuser /data` — napravi direktorij i **predaj ga korisniku** (`chown vlasnik:grupa putanja`).
+- `adduser -D -u 1001 appuser` — stvara korisnika `appuser`. `-D` = bez lozinke (disabled password, dovoljno za kontejner). `-u 1001` = fiksni UID.
+- `mkdir -p /data && chown appuser:appuser /data` — stvara direktorij i **predaje ga korisniku** (`chown vlasnik:grupa putanja`).
 - `USER appuser` — od ove točke nadalje (i pri runu) kontejner radi kao `appuser`, ne root.
 - `WORKDIR /data` — radni direktorij; mora pripadati `appuser`-u inače nema prava pisanja.
-- `CMD ["whoami"]` — ispiše tko je efektivni korisnik.
+- `CMD ["whoami"]` — ispisuje tko je efektivni korisnik.
 
 **Začkoljica:**
 - **`WORKDIR` mora biti `chown`-an na non-root korisnika**, inače pisanje (`touch`) padne s "permission denied" (LO5 #17 je baš to).
-- Redoslijed: prvo stvori korisnika i direktorij + `chown`, **pa** `USER`. Ako prebaciš na `USER` prerano, kasnije naredbe nemaju root prava.
+- Redoslijed: prvo se stvori korisnik i direktorij + `chown`, **pa** `USER`. Ako se prebaci na `USER` prerano, kasnije naredbe nemaju root prava.
 
-**Sažetak:** Non-root kontejner postaviš s `USER <ime>` nakon što stvoriš korisnika (`adduser -D`) i `chown`-aš mu radni direktorij. `WORKDIR` mora biti u vlasništvu tog korisnika da bi pisanje radilo. Pokretanje kao non-root je sigurnosna najbolja praksa (manja šteta ako netko provali).
+**Sažetak:** Non-root kontejner postavlja se s `USER <ime>` nakon što se stvori korisnik (`adduser -D`) i `chown`-a mu radni direktorij. `WORKDIR` mora biti u vlasništvu tog korisnika da bi pisanje radilo. Pokretanje kao non-root je sigurnosna najbolja praksa (manja šteta ako netko provali).
 
 ---
 
-## ZADATAK 7 — `HEALTHCHECK` (+ `--format docker`!)
+## Zadatak 7 — `HEALTHCHECK` (+ `--format docker`!)
 
 > Add a HEALTHCHECK to a Containerfile, run the container, and show the health status in podman ps / via podman healthcheck run.
 
@@ -284,22 +299,22 @@ podman rm -f hc
 ```
 
 **Razlomljeno:**
-- `apk add --no-cache curl` — instaliraj curl (treba za provjeru). `--no-cache` = ne ostavljaj keš indeksa.
+- `apk add --no-cache curl` — instalira curl (treba za provjeru). `--no-cache` = ne ostavlja keš indeksa.
 - `HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ...` — definira naredbu kojom Podman periodički provjerava radi li app stvarno (ne samo da proces živi).
-  - `--interval=10s` — provjeravaj svakih 10 s.
+  - `--interval=10s` — provjera svakih 10 s.
   - `--timeout=3s` — ako provjera traje dulje od 3 s → neuspjeh.
   - `--retries=3` — tek nakon 3 uzastopna neuspjeha označi `unhealthy`.
 - `curl -f ... || exit 1` — `-f` = neka curl vrati grešku na HTTP 4xx/5xx; `|| exit 1` = ako curl padne, vrati izlazni kod 1 (= unhealthy).
 - **`--format docker`** pri **buildu** — KLJUČNO (vidi začkoljicu).
 
 **Začkoljica (zlato, javila se uživo):**
-- **`HEALTHCHECK ... will be ignored. Must use 'docker' format`** → Podman po defaultu gradi u **OCI** formatu koji **tiho ignorira** HEALTHCHECK. Moraš graditi s **`--format docker`** da HEALTHCHECK uđe u image.
+- **`HEALTHCHECK ... will be ignored. Must use 'docker' format`** → Podman po defaultu gradi u **OCI** formatu koji **tiho ignorira** HEALTHCHECK. Treba graditi s **`--format docker`** da HEALTHCHECK uđe u image.
 
 **Sažetak:** `HEALTHCHECK` definira periodičnu provjeru je li aplikacija uistinu funkcionalna, sa statusom vidljivim u `podman ps` (`healthy`/`unhealthy`) ili kroz `podman healthcheck run`. Parametri `--interval/--timeout/--retries` podešavaju ritam i toleranciju. **Obavezno graditi s `--format docker`** — OCI format ga tiho ignorira.
 
 ---
 
-## ZADATAK 8 — `ENTRYPOINT` vs `CMD` (+ override CMD pri runu)
+## Zadatak 8 — `ENTRYPOINT` vs `CMD` (+ override CMD pri runu)
 
 > Demonstrate the difference between ENTRYPOINT and CMD in one Containerfile that uses both, then override CMD at podman run time.
 
@@ -317,7 +332,7 @@ podman run --rm epcmd:1.0 Podmanu    # -> Pozdrav, Podmanu   (CMD pregažen)
 
 **Razlomljeno:**
 - `ENTRYPOINT ["echo", "Pozdrav,"]` — **fiksni** dio naredbe. Uvijek se izvrši; teško ga je promijeniti (treba poseban flag `--entrypoint`).
-- `CMD ["svijete"]` — **zadani argument** koji se predaje entrypointu. **Lako se pregazi** — sve što napišeš iza imena image-a u `podman run` zamijeni CMD.
+- `CMD ["svijete"]` — **zadani argument** koji se predaje entrypointu. **Lako se pregazi** — sve navedeno iza imena image-a u `podman run` zamjenjuje CMD.
 - Bez argumenata: `echo Pozdrav, svijete`. S argumentom `Podmanu`: `echo Pozdrav, Podmanu`.
 
 **Začkoljica:**
@@ -329,7 +344,7 @@ podman run --rm epcmd:1.0 Podmanu    # -> Pozdrav, Podmanu   (CMD pregažen)
 
 ---
 
-## ZADATAK 9 — `ADD` vs `COPY`
+## Zadatak 9 — `ADD` vs `COPY`
 
 > Explain the difference between ADD and COPY and write a Containerfile that justifies using each.
 
@@ -349,22 +364,22 @@ podman run --rm addcopy:1.0   # /added sadrzi RASPAKIRAN file.txt, /copied ima f
 ```
 
 **Razlomljeno:**
-- `tar -czf arhiva.tar.gz file.txt` — napravi tar.gz arhivu. `-c` = create, `-z` = gzip kompresija, `-f` = ime datoteke.
+- `tar -czf arhiva.tar.gz file.txt` — stvara tar.gz arhivu. `-c` = create, `-z` = gzip kompresija, `-f` = ime datoteke.
 - `COPY file.txt /copied/file.txt` — **čisto kopiranje** datoteke u image. **Default izbor.**
 - `ADD arhiva.tar.gz /added/` — kao COPY, ali ima dvije "magije":
   1. **Lokalni tar arhiv automatski RASPAKIRA** na odredište.
   2. Može **skinuti datoteku s URL-a** (`ADD https://... /x`).
-- `CMD ["ls", "-R", ...]` — `-R` = rekurzivno izlistaj (vidiš da je u `/added` raspakiran sadržaj).
+- `CMD ["ls", "-R", ...]` — `-R` = rekurzivno izlistavanje (u `/added` je vidljiv raspakiran sadržaj).
 
 **Začkoljica:**
-- **Pravilo: koristi `COPY` osim ako baš trebaš ADD-ovu magiju** (raspakiranje tar-a ili URL). ADD je "previše pametan" — može iznenaditi (npr. neočekivano raspakira nešto).
-- ADD s URL-om se ne preporučuje (bolje `RUN curl/wget` jer imaš kontrolu i čišćenje).
+- **Pravilo: koristi se `COPY` osim ako baš treba ADD-ova magija** (raspakiranje tar-a ili URL). ADD je "previše pametan" — može iznenaditi (npr. neočekivano raspakira nešto).
+- ADD s URL-om se ne preporučuje (bolje `RUN curl/wget` jer pruža kontrolu i čišćenje).
 
-**Sažetak:** `COPY` čisto kopira datoteke iz konteksta u image i to je default izbor. `ADD` dodatno automatski raspakira lokalne tar arhive i može skidati s URL-a, pa ga koristiš samo kad ti baš ta funkcionalnost treba. Zbog "skrivene magije" ADD se inače izbjegava.
+**Sažetak:** `COPY` čisto kopira datoteke iz konteksta u image i to je default izbor. `ADD` dodatno automatski raspakira lokalne tar arhive i može skidati s URL-a, pa se koristi samo kad baš ta funkcionalnost treba. Zbog "skrivene magije" ADD se inače izbjegava.
 
 ---
 
-## ZADATAK 10 — `save` / `load` (air-gapped prijenos)
+## Zadatak 10 — `save` / `load` (air-gapped prijenos)
 
 > Save an image to a tarball with podman save, remove it, then restore it with podman load; explain when you'd do this (air-gapped transfer).
 
@@ -376,19 +391,19 @@ podman images myapp                      # opet je tu
 ```
 
 **Razlomljeno:**
-- `podman save -o myapp.tar myapp:1.0` — spremi image (sve layere + metapodatke) u jednu `.tar` datoteku. `-o` = output datoteka.
-- `podman rmi myapp:1.0` — obriši image. **`rmi` = remove IMAGE** (ne kontejner!).
-- `podman load -i myapp.tar` — učitaj image natrag iz tarballa. `-i` = input datoteka.
+- `podman save -o myapp.tar myapp:1.0` — sprema image (sve layere + metapodatke) u jednu `.tar` datoteku. `-o` = output datoteka.
+- `podman rmi myapp:1.0` — briše image. **`rmi` = remove IMAGE** (ne kontejner!).
+- `podman load -i myapp.tar` — učitava image natrag iz tarballa. `-i` = input datoteka.
 
 **Začkoljica:**
 - **`rmi` briše image, `rm` briše kontejner** — lako pomiješati.
-- **Kad ovo koristiš:** **air-gapped** okruženje (računalo bez interneta) — image preneseš USB-om/mrežom kao datoteku, bez registra. Ili arhiviranje točne verzije.
+- **Kada se koristi:** **air-gapped** okruženje (računalo bez interneta) — image se prenese USB-om/mrežom kao datoteka, bez registra. Ili arhiviranje točne verzije.
 
-**Sažetak:** `podman save -o file.tar img` pakira cijeli image u tarball, a `podman load -i file.tar` ga vraća — bez registra. Koristi se za prijenos u izolirana (air-gapped) okruženja ili arhiviranje. Zapamti: `rmi` = image, `rm` = kontejner.
+**Sažetak:** `podman save -o file.tar img` pakira cijeli image u tarball, a `podman load -i file.tar` ga vraća — bez registra. Koristi se za prijenos u izolirana (air-gapped) okruženja ili arhiviranje. Valja zapamtiti: `rmi` = image, `rm` = kontejner.
 
 ---
 
-## ZADATAK 11 — Pull po digestu (`name@sha256:...`)
+## Zadatak 11 — Pull po digestu (`name@sha256:...`)
 
 > Pull an image by digest (name@sha256:...) and explain why it's more reproducible than a tag.
 
@@ -403,24 +418,24 @@ podman pull alpine@$REGDIGEST
 ```
 
 **Razlomljeno:**
-- `REGDIGEST=$(...)` — spremi izlaz naredbe u varijablu. `$(...)` = "pokreni ovo i uvrsti rezultat".
-- `--format '{{.Digest}}'` — izvuci **registryjev** digest (sha256 sažetak manifesta). Go-template.
+- `REGDIGEST=$(...)` — sprema izlaz naredbe u varijablu. `$(...)` = pokretanje naredbe i uvrštavanje rezultata.
+- `--format '{{.Digest}}'` — izvlači **registryjev** digest (sha256 sažetak manifesta). Go-template.
 - `echo "$REGDIGEST"` — `$ime` = pročitaj **vrijednost** varijable (bez `$` bi ispisao golo ime).
-- `alpine@$REGDIGEST` — povuci točno taj image po digestu. `@sha256:...` = "baš ovaj sadržaj, ne pomični tag".
+- `alpine@$REGDIGEST` — povlači točno taj image po digestu. `@sha256:...` = baš taj sadržaj, ne pomični tag.
 
 **Začkoljica (dvije, obje uživo):**
-- **`manifest unknown`** pri pull po digestu → koristio si **`.RepoDigests[0]`** (LOKALNI digest) koji nakon `save`/`load` ili na drugom računalu ne mora postojati na Hubu. **Koristi `'{{.Digest}}'`** (registryjev digest).
+- **`manifest unknown`** pri pull po digestu → korišten **`.RepoDigests[0]`** (LOKALNI digest) koji nakon `save`/`load` ili na drugom računalu ne mora postojati na Hubu. **Koristi se `'{{.Digest}}'`** (registryjev digest).
 - **Ispisuje ime varijable umjesto vrijednosti** → **fali `$`**. Pravilo: `$ime` = vrijednost, `ime` = goli tekst.
 
 **Zašto je digest reproducibilniji od taga:**
 - **Tag je pomičan** — `alpine:3.20` danas i za mjesec dana mogu biti **različiti** image-i (maintaineri pregaze tag novom verzijom).
 - **Digest je nepromjenjiv** — `@sha256:...` uvijek pokazuje **točno isti sadržaj**. Garantirana reproducibilnost.
 
-**Sažetak:** Pull po digestu (`name@sha256:...`) dohvaća **točno određeni** sadržaj image-a, dok je tag pomičan pokazivač koji maintaineri mogu pregaziti. Zato je digest reproducibilniji. Koristi **registryjev** digest iz `'{{.Digest}}'`, ne lokalni `.RepoDigests`, i ne zaboravi `$` pri čitanju varijable.
+**Sažetak:** Pull po digestu (`name@sha256:...`) dohvaća **točno određeni** sadržaj image-a, dok je tag pomičan pokazivač koji maintaineri mogu pregaziti. Zato je digest reproducibilniji. Koristi se **registryjev** digest iz `'{{.Digest}}'`, ne lokalni `.RepoDigests`, uz obavezni `$` pri čitanju varijable.
 
 ---
 
-## ZADATAK 12 — `--no-cache` + layer caching
+## Zadatak 12 — `--no-cache` + layer caching
 
 > Build an image with --no-cache and explain layer caching and when disabling it helps or hurts.
 
@@ -431,7 +446,7 @@ podman build --no-cache -t cachetest:1.0 -f Containerfile .     # ignorira keš,
 ```
 
 **Razlomljeno:**
-- `--no-cache` — **ignoriraj keširane layere**, sagradi svaki nanovo.
+- `--no-cache` — **ignorira keširane layere**, gradi svaki nanovo.
 
 **Kako keš radi (layer caching):**
 - Podman kešira svaki layer. Pri ponovnom buildu, ako se instrukcija I sve iznad nje nisu promijenile → koristi keširani layer (brzo).
@@ -439,8 +454,8 @@ podman build --no-cache -t cachetest:1.0 -f Containerfile .     # ignorira keš,
 - Zato se **`COPY` izvornog koda stavlja što kasnije** — da promjena koda ne ruši keš instalacije ovisnosti (LO5 #12).
 
 **Kad `--no-cache` POMAŽE:**
-- Build argovi/vanjski resursi se keširaju a ti želiš svjež povlak (npr. `apt-get update` da pokupi nove pakete).
-- Sumnjaš da je keš "zastario" i daje krivi rezultat.
+- Build argovi/vanjski resursi se keširaju a potreban je svjež povlak (npr. `apt-get update` da pokupi nove pakete).
+- Sumnja da je keš "zastario" i daje krivi rezultat.
 
 **Kad ŠKODI:**
 - Bespotrebno sporo — sve se gradi iznova iako nije trebalo.
@@ -452,7 +467,7 @@ podman build --no-cache -t cachetest:1.0 -f Containerfile .     # ignorira keš,
 
 ---
 
-## ZADATAK 13 — Build iz ne-defaultnog imena Containerfilea (`-f`) + build kontekst
+## Zadatak 13 — Build iz ne-defaultnog imena Containerfilea (`-f`) + build kontekst
 
 > Build from a non-default Containerfile name using -f, and explain the build-context argument.
 
@@ -473,13 +488,13 @@ podman run --rm devbuild:1.0   # -> dev build
 
 **Začkoljica:**
 - **`-f` bira RECEPT, `.` (zadnji argument) bira MATERIJAL** (kontekst iz kojeg `COPY` čita). Mogu biti različite mape.
-- **`checking on sources under <kontekst>: ... no such file`** → ili krivi kontekst, ili krivo ime datoteke u `COPY`. Pročitaj koju putanju terminal traži pa usporedi sa stvarnim stanjem.
+- **`checking on sources under <kontekst>: ... no such file`** → ili krivi kontekst, ili krivo ime datoteke u `COPY`. Iz ispisa se pročita koju putanju terminal traži pa se usporedi sa stvarnim stanjem.
 
 **Sažetak:** `-f <ime>` govori Podmanu da koristi recept s nestandardnim imenom (default je `Containerfile`). Zadnji argument (`.`) je build kontekst — mapa iz koje `COPY`/`ADD` čitaju, neovisna o lokaciji recepta. Razdvajanje `-f` (recept) i konteksta (materijal) omogućuje npr. različite Containerfileove nad istom mapom.
 
 ---
 
-## ZADATAK 14 — `COPY --chown` (vlasništvo datoteka u image-u)
+## Zadatak 14 — `COPY --chown` (vlasništvo datoteka u image-u)
 
 > Use COPY --chown to set file ownership in the image and verify with ls -l inside the container.
 
@@ -499,19 +514,19 @@ podman run --rm chowntest:1.0   # vlasnik je appuser appuser, ne root
 ```
 
 **Razlomljeno:**
-- `COPY --chown=appuser:appuser app.conf /home/appuser/app.conf` — kopiraj datoteku I odmah joj **postavi vlasnika** u istom koraku. Format `--chown=vlasnik:grupa`.
+- `COPY --chown=appuser:appuser app.conf /home/appuser/app.conf` — kopira datoteku I odmah joj **postavlja vlasnika** u istom koraku. Format `--chown=vlasnik:grupa`.
 - Bez `--chown` kopirana datoteka bi pripadala **root**-u (default), pa je non-root korisnik ne bi mogao mijenjati.
 - `ls -l` — "long" listing, pokaže vlasnika/grupu/prava (`-l` = long format).
 
 **Začkoljica:**
 - **Vlasništvo se postavlja u ISTOM layeru** kao kopiranje. Alternativa (`COPY` pa zaseban `RUN chown`) stvara dodatni layer i dvostruko zauzeće (datoteka u dva layera).
-- **`no such file`** u `COPY` → krivo ime datoteke. Provjeri da datoteka stvarno postoji u kontekstu.
+- **`no such file`** u `COPY` → krivo ime datoteke. Treba provjeriti da datoteka stvarno postoji u kontekstu.
 
 **Sažetak:** `COPY --chown=user:group` kopira datoteku i u istom layeru joj postavlja vlasništvo, što je nužno da non-root korisnik smije pisati po njoj. Bez toga kopirana datoteka pripada rootu. Rješavanje u jednom koraku štedi layer u odnosu na zaseban `RUN chown`.
 
 ---
 
-## ZADATAK 15 — `ARG` + `ENV` (build-time vs run-time varijable)
+## Zadatak 15 — `ARG` + `ENV` (build-time vs run-time varijable)
 
 > Write a Containerfile combining ARG and ENV (build-time vs run-time variables) and demonstrate the difference.
 
@@ -545,11 +560,11 @@ podman run --rm argenv:2.0 env | grep BUILT_VERSION   # BUILT_VERSION postoji u 
 - **`BUILT_VERSION=BUILT_VERSION` (ispisuje ime umjesto vrijednosti)** → fali **`$`** ispred varijable u CMD-u. `$ime` = vrijednost.
 - **Drugi build pokaže staru vrijednost** → keš pokupio stari `1.0` layer. **`--no-cache`** na drugom buildu.
 
-**Sažetak:** `ARG` je build-time varijabla koja ne preživi u kontejner, dok `ENV` postaje trajna varijabla okruženja vidljiva i pri buildu i u pokrenutom kontejneru. Tipično `ENV` preuzme vrijednost iz `ARG`-a da bi je "zapamtio". Pazi na `$` pri čitanju i na keš pri mijenjanju build arga (`--no-cache`).
+**Sažetak:** `ARG` je build-time varijabla koja ne preživi u kontejner, dok `ENV` postaje trajna varijabla okruženja vidljiva i pri buildu i u pokrenutom kontejneru. Tipično `ENV` preuzme vrijednost iz `ARG`-a da bi je "zapamtio". Valja paziti na `$` pri čitanju i na keš pri mijenjanju build arga (`--no-cache`).
 
 ---
 
-## ZADATAK 16 — `podman login` + push u privatni repo (gdje se čuvaju kredencijali)
+## Zadatak 16 — `podman login` + push u privatni repo (gdje se čuvaju kredencijali)
 
 > podman login to a registry and push an image to a private repository; explain where/how the credentials are stored.
 
@@ -566,12 +581,12 @@ cat ${XDG_RUNTIME_DIR}/containers/auth.json
 ```
 
 **Razlomljeno:**
-- `cat ~/docker/token | podman login ... --password-stdin` — pročitaj token iz datoteke i predaj ga loginu kroz **stdin**.
+- `cat ~/docker/token | podman login ... --password-stdin` — čita token iz datoteke i predaje ga loginu kroz **stdin**.
   - `|` = pipe (izlaz lijevo → ulaz desno).
   - `--password-stdin` = "ne traži lozinku interaktivno, čitaj sa standardnog ulaza". Sigurnije (token ne ostaje u shell historiji ni na ekranu).
 - `-u tomislavb16` — korisničko ime.
-- `podman tag ... docker.io/tomislavb16/private-app:1.0` — daj image puno ime s tvojim namespace-om (treba za push).
-- `podman push ...` — gurni na registar.
+- `podman tag ... docker.io/tomislavb16/private-app:1.0` — image dobiva puno ime s vlastitim namespace-om (treba za push).
+- `podman push ...` — gura na registar.
 - `${XDG_RUNTIME_DIR}/containers/auth.json` — gdje Podman sprema login token.
 
 **Začkoljica (sve uživo):**
@@ -579,14 +594,14 @@ cat ${XDG_RUNTIME_DIR}/containers/auth.json
 - **Docker Hub odbija običnu lozinku** (pogotovo uz Google OAuth login bez native lozinke) → treba **Access Token** (Read & Write).
 - **`--pasword-stdin` (jedno `s`)** → tipfeler, padne. Mora `--password-stdin`.
 - **`docker-io` vs `docker.io`** → crtica umjesto točke, padne.
-- **Clipboard ne radi VM↔host** → token unosiš ručno (npr. `nano ~/token`) ili Firefox **unutar** VM-a (tada copy/paste radi).
-- ⚠️ **Ne ispisuj token na ekran** (`cat token` ga pokaže) ako dijeliš screenshot — opozovi ga ako se otkrije.
+- **Clipboard ne radi VM↔host** → token se unosi ručno (npr. `nano ~/token`) ili kroz Firefox **unutar** VM-a (tada copy/paste radi).
+- ⚠️ **Token se ne ispisuje na ekran** (`cat token` ga pokaže) pri dijeljenju screenshota — opoziva se ako se otkrije.
 
-**Sažetak:** `podman login` autenticira na registar (token kroz `--password-stdin` radi sigurnosti), nakon čega `podman push` gura tagiran image u tvoj namespace. Kredencijali se spremaju u `auth.json` kao **base64 (enkodiranje, ne enkripcija)** — vidljivi i reverzibilni. Docker Hub traži Access Token, ne običnu lozinku.
+**Sažetak:** `podman login` autenticira na registar (token kroz `--password-stdin` radi sigurnosti), nakon čega `podman push` gura tagiran image u vlastiti namespace. Kredencijali se spremaju u `auth.json` kao **base64 (enkodiranje, ne enkripcija)** — vidljivi i reverzibilni. Docker Hub traži Access Token, ne običnu lozinku.
 
 ---
 
-## ZADATAK 17 — Dangling images (`podman image prune` + `rmi`)
+## Zadatak 17 — Dangling images (`podman image prune` + `rmi`)
 
 > Remove dangling images with podman image prune and a specific image with podman rmi; explain what "dangling" means.
 
@@ -595,7 +610,7 @@ cat ${XDG_RUNTIME_DIR}/containers/auth.json
 podman build -t danglingdemo:1.0 -f Containerfile .
 # (izmijeni Containerfile pa ponovo)
 podman build -t danglingdemo:1.0 -f Containerfile .
-podman images                          # vidiš <none> <none> red = dangling
+podman images                          # vidljiv <none> <none> red = dangling
 
 podman rmi <ID>                        # obriši konkretan (po ID-u)
 podman image prune                     # obriši SVE dangling odjednom
@@ -603,18 +618,18 @@ podman image prune                     # obriši SVE dangling odjednom
 
 **Razlomljeno:**
 - `podman images` — u listi se pojavi red s `<none>` u REPOSITORY i TAG → to je **dangling image**.
-- `podman rmi <ID>` — obriši konkretan image po hash ID-u. (Vidio si **dvije** `Deleted:` linije: image + njegov sad-osirotjeli layer.)
-- `podman image prune` — obriši **sve** dangling image-e odjednom (počisti smeće).
+- `podman rmi <ID>` — briše konkretan image po hash ID-u. (Pojave se **dvije** `Deleted:` linije: image + njegov sad-osirotjeli layer.)
+- `podman image prune` — briše **sve** dangling image-e odjednom (čisti smeće).
 
 **Što je "dangling":**
-- **Dangling = image bez taga** (`<none>:<none>`). Nastaje kad **reiskoristiš tag** pri rebuildu: novi image preuzme tag `danglingdemo:1.0`, a stari ostane bez imena (ali zauzima prostor).
+- **Dangling = image bez taga** (`<none>:<none>`). Nastaje kad se **reiskoristi tag** pri rebuildu: novi image preuzme tag `danglingdemo:1.0`, a stari ostane bez imena (ali zauzima prostor).
 - To NIJE isto što i neiskorišten image — dangling je specifično "bezimeni ostatak".
 
 **Sažetak:** Dangling image je image bez taga (`<none>:<none>`), tipično nastao kad rebuild "otme" tag prethodnom image-u. `podman rmi <ID>` briše konkretan (uz osirotjele layere), a `podman image prune` počisti sve dangling odjednom. Tako se oslobađa prostor od nakupljenih bezimenih ostataka.
 
 ---
 
-## ZADATAK 18 — Statički file-server (`python -m http.server`)
+## Zadatak 18 — Statički file-server (`python -m http.server`)
 
 > Write a Containerfile for a static file server using python -m http.server over a directory you COPY in, expose the port, and run it.
 
@@ -639,19 +654,19 @@ podman rm -f web18
 **Razlomljeno:**
 - `python:3.12-alpine` — Python na maloj Alpine bazi (~51 MB umjesto ~1 GB za običan `python:3.12`).
 - `WORKDIR /web` — radni direktorij; `http.server` poslužuje datoteke iz njega.
-- `COPY site/ /web/` — kopiraj sadržaj mape `site/` u `/web/`.
-- `EXPOSE 8000` — **najavi** da servis sluša na 8000. (Samo dokumentacija, ne otvara port! Vidi #20.)
-- `CMD ["python", "-m", "http.server", "8000"]` — pokreni Pythonov ugrađeni HTTP server na portu 8000. `-m` = pokreni modul kao skriptu.
-- `-p 8000:8000` — **stvarno objavi** port (host 8000 → kontejner 8000).
+- `COPY site/ /web/` — kopira sadržaj mape `site/` u `/web/`.
+- `EXPOSE 8000` — **najavljuje** da servis sluša na 8000. (Samo dokumentacija, ne otvara port! Vidi #20.)
+- `CMD ["python", "-m", "http.server", "8000"]` — pokreće Pythonov ugrađeni HTTP server na portu 8000. `-m` = pokretanje modula kao skripte.
+- `-p 8000:8000` — **stvarno objavljuje** port (host 8000 → kontejner 8000).
 
 **Začkoljica:**
-- **`EXPOSE` ne otvara port** — moraš ga objaviti s `-p` pri runu. EXPOSE je samo najava (LO5 #15).
+- **`EXPOSE` ne otvara port** — objavljuje se s `-p` pri runu. EXPOSE je samo najava (LO5 #15).
 
-**Sažetak:** Pythonov `http.server` modul poslužuje statičke datoteke iz `WORKDIR`-a bez ikakvog dodatnog koda. `EXPOSE` samo dokumentira port, a stvarni pristup s hosta tražiš s `-p host:container`. Mala `-alpine` baza drži image višestruko manjim.
+**Sažetak:** Pythonov `http.server` modul poslužuje statičke datoteke iz `WORKDIR`-a bez ikakvog dodatnog koda. `EXPOSE` samo dokumentira port, a stvarni pristup s hosta traži se s `-p host:container`. Mala `-alpine` baza drži image višestruko manjim.
 
 ---
 
-## ZADATAK 19 — Pinanje verzije paketa (reproducibilnost)
+## Zadatak 19 — Pinanje verzije paketa (reproducibilnost)
 
 > Build an image that installs a specific pinned version of a package (apt or apk) and explain why pinning matters for reproducibility.
 
@@ -672,23 +687,23 @@ podman run --rm pinned-curl:1.0   # -> curl 8.14.1 ...
 ```
 
 **Razlomljeno:**
-- `apk update >/dev/null && apk list curl` — povuci svjež indeks (`>/dev/null` skriva bučni ispis) pa ispiši dostupnu verziju curl-a.
-- `apk add --no-cache curl=8.14.1-r2` — instaliraj **točno** tu verziju. Sintaksa pina = **`paket=verzija`**. `--no-cache` = bez keša indeksa (Alpine specifično, drži image manjim).
-- (Debian ekvivalent: `apt-get install -y curl=<verzija>`; dostupnu verziju nađeš s `apt-cache policy curl`.)
+- `apk update >/dev/null && apk list curl` — povlači svjež indeks (`>/dev/null` skriva bučni ispis) pa ispisuje dostupnu verziju curl-a.
+- `apk add --no-cache curl=8.14.1-r2` — instalira **točno** tu verziju. Sintaksa pina = **`paket=verzija`**. `--no-cache` = bez keša indeksa (Alpine specifično, drži image manjim).
+- (Debian ekvivalent: `apt-get install -y curl=<verzija>`; dostupna verzija nalazi se s `apt-cache policy curl`.)
 
 **Začkoljica (obje uživo):**
-- **Alpine/Debian glavni repo drže SAMO trenutnu verziju** — stare se brišu. Slijepo prepisivanje broja iz tutoriala → **`no such package`** / **`Unable to locate package`**. Zato **prvo otkrij** dostupnu verziju pa pinaj na nju.
+- **Alpine/Debian glavni repo drže SAMO trenutnu verziju** — stare se brišu. Slijepo prepisivanje broja iz tutorijala → **`no such package`** / **`Unable to locate package`**. Zato se **prvo otkrije** dostupna verzija pa pina na nju.
 - **`exit status 127`** = command not found (krivo ime KOMANDE, npr. `app-get` umjesto `apt-get`).
 
 **Zašto pinanje = reproducibilnost:**
-- Bez pina (`apk add curl`) dobiješ **koju god** verziju repo trenutno nudi → isti Containerfile danas i sutra može dati različit binarij.
+- Bez pina (`apk add curl`) dobije se **koju god** verziju repo trenutno nudi → isti Containerfile danas i sutra može dati različit binarij.
 - S pinom (`curl=8.14.1-r2`) **uvijek** isti binarij → build je reproducibilan.
 
-**Sažetak:** Pinanje verzije (`paket=verzija`) osigurava da isti Containerfile uvijek instalira identičan binarij — to je reproducibilnost. Repozitoriji drže samo trenutnu verziju, pa prvo otkriješ dostupnu (`apk list` / `apt-cache policy`) pa pinaš na nju, inače build pada s "no such package". `127` znači krivo ime komande.
+**Sažetak:** Pinanje verzije (`paket=verzija`) osigurava da isti Containerfile uvijek instalira identičan binarij — to je reproducibilnost. Repozitoriji drže samo trenutnu verziju, pa se prvo otkrije dostupna (`apk list` / `apt-cache policy`) pa pina na nju, inače build pada s "no such package". `127` znači krivo ime komande.
 
 ---
 
-## ZADATAK 20 — Inspekcija nepoznatog image-a pa pokretanje prema njemu
+## Zadatak 20 — Inspekcija nepoznatog image-a pa pokretanje prema njemu
 
 > Inspect an unknown image with podman image inspect to discover its default Entrypoint/Cmd, exposed ports, and env, then run it accordingly.
 
@@ -713,20 +728,20 @@ podman rm -f web20
 
 **Razlomljeno:**
 - `podman image inspect <img>` — ispiše dugačak JSON; sekcija **`Config`** nosi recept kako image radi.
-- `--format '{{.Config.Cmd}}'` — izvuci pojedino polje. `.` = korijenski objekt; `.Config.Cmd` = uđi u `Config`, izvuci `Cmd`. Go-template.
-- Polja koja čitaš: `Cmd` + `Entrypoint` (što se vrti), `ExposedPorts` (najavljeni port), `Env` (ugrađene varijable, npr. verzija).
-- `-p 8080:80` — objavi baš port 80 jer nam je inspect to rekao (ne nagađanjem).
+- `--format '{{.Config.Cmd}}'` — izvlači pojedino polje. `.` = korijenski objekt; `.Config.Cmd` = ulazak u `Config`, dohvat `Cmd`. Go-template.
+- Polja koja se čitaju: `Cmd` + `Entrypoint` (što se vrti), `ExposedPorts` (najavljeni port), `Env` (ugrađene varijable, npr. verzija).
+- `-p 8080:80` — objavljuje baš port 80 jer je inspect to pokazao (ne nagađanjem).
 
 **Začkoljice (pojmovi):**
 - **`ExposedPorts` vraća `map[80/tcp:{}]`** — to je mapa (ključ→vrijednost); ključ `80/tcp`, vrijednost prazna `{}` jer EXPOSE ne nosi vrijednost, samo najavu.
-- **`EXPOSE`/`ExposedPorts` je SAMO najava** — ne otvara port. Inspect ti kaže *koji* port, pa ga objaviš s `-p`.
+- **`EXPOSE`/`ExposedPorts` je SAMO najava** — ne otvara port. Inspect pokazuje *koji* port, pa se objavljuje s `-p`.
 - **Entrypoint + Cmd zajedno:** kod nginxa efektivno `/docker-entrypoint.sh nginx -g "daemon off;"`. `daemon off;` drži nginx u **foregroundu** (PID 1 živi → kontejner živi).
 
-**Sažetak:** `podman image inspect` otkriva kako nepoznat image treba pokrenuti: `Config` sadrži `Entrypoint`/`Cmd` (što se vrti), `ExposedPorts` (najavljeni port) i `Env` (ugrađene varijable), a pojedino polje izvučeš s `--format '{{.Config.X}}'`. `EXPOSE` je samo najava, pa port stvarno objaviš s `-p`. Tako pokrećeš image svjesno, prema njegovim metapodacima, a ne nagađanjem.
+**Sažetak:** `podman image inspect` otkriva kako nepoznat image treba pokrenuti: `Config` sadrži `Entrypoint`/`Cmd` (što se vrti), `ExposedPorts` (najavljeni port) i `Env` (ugrađene varijable), a pojedino polje izvuče se s `--format '{{.Config.X}}'`. `EXPOSE` je samo najava, pa se port stvarno objavljuje s `-p`. Tako se image pokreće svjesno, prema njegovim metapodacima, a ne nagađanjem.
 
 ---
 
-## ZADATAK 21 — Multi-line `RUN ... && ...` (instalacija + čišćenje u ISTOM layeru)
+## Zadatak 21 — Multi-line `RUN ... && ...` (instalacija + čišćenje u ISTOM layeru)
 
 > Write a Containerfile with a multi-line RUN ... && ... that installs packages and cleans the package cache in the same layer; explain why cleanup must share the layer.
 
@@ -755,28 +770,28 @@ podman images clean-layer    # 1.0 = 138 MB, bad = 158 MB (+20 MB cache)
 
 **Razlomljeno:**
 - `RUN ... && \` — `\` na kraju retka = naredba se nastavlja u sljedećem; sve je **jedan** `RUN` = **jedan** layer (samo vizualno prelomljen). To je "multi-line RUN".
-- `apt-get update` — povuci svjež indeks paketa (bez ovoga `install` padne — LO5 #10).
-- `&&` — "pokreni sljedeće samo ako prethodno uspije".
-- `apt-get install -y` — instaliraj; `-y` = automatski "yes" (build nije interaktivan).
-- `--no-install-recommends` — instaliraj samo tražene pakete, ne i "preporučene" dodatke. Dodatna ušteda.
+- `apt-get update` — povlači svjež indeks paketa (bez ovoga `install` padne — LO5 #10).
+- `&&` — "pokreće sljedeće samo ako prethodno uspije".
+- `apt-get install -y` — instalira; `-y` = automatski "yes" (build nije interaktivan).
+- `--no-install-recommends` — instalira samo tražene pakete, ne i "preporučene" dodatke. Dodatna ušteda.
 - `ca-certificates` — curl bez ovoga ne može preko HTTPS-a.
-- `rm -rf /var/lib/apt/lists/*` — obriši preuzeti indeks paketa. **Ovo je čišćenje — u ISTOM RUN-u.**
+- `rm -rf /var/lib/apt/lists/*` — briše preuzeti indeks paketa. **Ovo je čišćenje — u ISTOM RUN-u.**
 
 **Zašto čišćenje MORA dijeliti layer (suština):**
 - Layer se snima kao snapshot **na kraju** svoje `RUN` instrukcije.
-- Što obrišeš **prije** tog kraja (u istom RUN-u) → nestane, nikad ne uđe u snapshot.
-- Što obrišeš u **sljedećem** RUN-u → prekasno; cache je već zapečaćen u prethodnom layeru, drugi RUN doda samo "whiteout" (sakrije) ali bajtovi i dalje putuju → image ostaje velik.
+- Što se obriše **prije** tog kraja (u istom RUN-u) → nestane, nikad ne uđe u snapshot.
+- Što se obriše u **sljedećem** RUN-u → prekasno; cache je već zapečaćen u prethodnom layeru, drugi RUN doda samo "whiteout" (sakrije) ali bajtovi i dalje putuju → image ostaje velik.
 - **Dokaz uživo:** čisti 138 MB, "loša" verzija (cache ostao) 158 MB → **+20 MB** na istoj instalaciji.
 
 **Začkoljica:**
-- **`exit status 100`** = apt-ova greška (komanda postoji ali apt ne može odraditi — krivo ime PAKETA, npr. `ca-certificated`, ili fali `apt-get update`). Razlikuj od `127` (krivo ime komande).
+- **`exit status 100`** = apt-ova greška (komanda postoji ali apt ne može odraditi — krivo ime PAKETA, npr. `ca-certificated`, ili fali `apt-get update`). Razlikuje se od `127` (krivo ime komande).
 - **`debconf: unable to initialize frontend: Dialog`** je **bezopasno** — apt samo javlja da nema interaktivni terminal. Build svejedno prođe.
 
 **Sažetak:** Sve operacije u jednom `RUN ... && ...` čine **jedan layer**, pa se cache obrisan unutar njega nikad ne snimi u image. Ako bi čišćenje bilo u zasebnom RUN-u, cache bi već bio zapečaćen u prethodnom layeru i samo "skriven" (whiteout) — image bi ostao velik (dokazano: 138 vs 158 MB). Zato čišćenje mora dijeliti layer s instalacijom. `100` = apt greška (paket), `127` = kriva komanda.
 
 ---
 
-## ZADATAK 22 — Tag + push na DVA registra (image mirroring)
+## Zadatak 22 — Tag + push na DVA registra (image mirroring)
 
 > Tag and push the same image to two different registries (e.g. Docker Hub and Quay) and explain when image mirroring is useful.
 
@@ -799,26 +814,26 @@ podman push quay.io/tbrodar/lo2-push:1.0
 ```
 
 **Razlomljeno:**
-- `podman tag <staro-ime> <novo-ime>` — dodaj postojećem image-u novo (puno) ime. Image se NE kopira — dobiva dodatnu naljepnicu (isti IMAGE ID).
+- `podman tag <staro-ime> <novo-ime>` — dodaje postojećem image-u novo (puno) ime. Image se NE kopira — dobiva dodatnu naljepnicu (isti IMAGE ID).
 - Razlika je samo u `registar/račun` dijelu: `docker.io/tomislavb16` vs `quay.io/tbrodar`.
-- `podman push <puno-ime>` — gurni image na registar naveden u imenu (Podman zna kamo iz prefiksa `docker.io/` / `quay.io/`).
+- `podman push <puno-ime>` — gura image na registar naveden u imenu (Podman zna kamo iz prefiksa `docker.io/` / `quay.io/`).
 
 **Začkoljica (sve uživo):**
-- **Quay često odbije običnu lozinku za CLI** → generiraj **CLI / Encrypted password** (Quay → Account Settings → Generate Encrypted Password), pa njime login.
+- **Quay često odbije običnu lozinku za CLI** → generira se **CLI / Encrypted password** (Quay → Account Settings → Generate Encrypted Password), pa se njime prijavi.
 - **`Copying blob ... skipped: already exists`** pri push-u → registar već ima taj layer (npr. Alpine bazu), pa ga ne šalje ponovo. Normalno i poželjno.
-- Ako registar ne stvara repo automatski → napravi ga u browseru (Public, Empty repository).
+- Ako registar ne stvara repo automatski → repo se stvara u browseru (Public, Empty repository).
 
-**Kad je image mirroring koristan (TEORIJA — moraš znati objasniti):**
-- **Redundancija/dostupnost** — ako jedan registar padne ili je nedostupan, image povučeš s drugog. Nema jedne točke kvara.
+**Kad je image mirroring koristan (TEORIJA):**
+- **Redundancija/dostupnost** — ako jedan registar padne ili je nedostupan, image se povuče s drugog. Nema jedne točke kvara.
 - **Geografija/brzina** — timovi blizu jednog registra vuku brže s njega.
 - **Različiti ekosustavi** — npr. firma na Red Hat stacku vuče s Quaya, drugi s Docker Huba.
 - **Izbjegavanje rate-limita** — Docker Hub ograničava broj pull-ova za anonimne/free korisnike; mirror na Quay zaobilazi to. (Direktna veza na **LO4 #2** — pull limit!)
 
-**Sažetak:** Isti image dobije dva puna imena (`podman tag`, isti IMAGE ID) i gurne se na oba registra zasebnim `push`-evima — to je image mirroring. Koristan je za redundanciju (jedan registar padne → vučeš s drugog), brzinu po geografiji, različite ekosustave i zaobilaženje Docker Hub rate-limita. Svaki registar traži vlastiti login (Quay često encrypted/CLI password).
+**Sažetak:** Isti image dobije dva puna imena (`podman tag`, isti IMAGE ID) i gurne se na oba registra zasebnim `push`-evima — to je image mirroring. Koristan je za redundanciju (jedan registar padne → povlači se s drugog), brzinu po geografiji, različite ekosustave i zaobilaženje Docker Hub rate-limita. Svaki registar traži vlastiti login (Quay često encrypted/CLI password).
 
 ---
 
-## ZADATAK 23 — Lista OS paketa + vrijednost minimalne baze
+## Zadatak 23 — Lista OS paketa + vrijednost minimalne baze
 
 > Run an image and list the OS packages installed inside it; explain the security/size value of choosing a minimal base image.
 
@@ -835,10 +850,10 @@ podman images | grep -E "debian|alpine"                  # debian ~121 MB, alpin
 ```
 
 **Razlomljeno:**
-- `dpkg -l` — Debianov alat: izlistaj instalirane pakete. `apk info` — Alpineov ekvivalent.
-- `| wc -l` — `wc` = word count; `-l` = broji **retke**. Umjesto da čitamo listu, samo je prebrojimo.
+- `dpkg -l` — Debianov alat: izlistava instalirane pakete. `apk info` — Alpineov ekvivalent.
+- `| wc -l` — `wc` = word count; `-l` = broji **retke**. Umjesto čitanja liste, samo se prebroji.
 - `apk info` (bez wc) — same nazive paketa.
-- `grep -E "debian|alpine"` — filtriraj retke koji sadrže "debian" ili "alpine". `-E` = prošireni regex; `|` unutar navodnika = "ili".
+- `grep -E "debian|alpine"` — filtrira retke koji sadrže "debian" ili "alpine". `-E` = prošireni regex; `|` unutar navodnika = "ili".
 
 **Brojevi (uživo):**
 - **Debian 12: 93 paketa, ~121 MB.** **Alpine 3.20: 14 paketa, ~8.1 MB.** Alpine ~15× manji.
@@ -858,32 +873,32 @@ podman images | grep -E "debian|alpine"                  # debian ~121 MB, alpin
 
 ---
 
-# 🏆 KOLEKCIJA DIJAGNOSTIČKIH GREŠAKA (zlato za ispit)
+## Kolekcija dijagnostičkih grešaka
 
 Sve su se stvarno pojavile uživo. Svaka ima jasan uzrok i fix.
 
 | Poruka / simptom | Uzrok | Fix |
 |---|---|---|
 | `COPY requires at least two arguments` | Fali **razmak** u COPY (`./app` vs `. /app`) | `COPY . /app` (točka, RAZMAK, odredište) |
-| `HEALTHCHECK ... will be ignored. Must use 'docker' format` | OCI default tiho ignorira HEALTHCHECK | Buildaj s **`--format docker`** |
-| `manifest unknown` (pull po digestu) | Korišten **lokalni** `.RepoDigests` digest | Koristi **`'{{.Digest}}'`** (registryjev) |
+| `HEALTHCHECK ... will be ignored. Must use 'docker' format` | OCI default tiho ignorira HEALTHCHECK | Build s **`--format docker`** |
+| `manifest unknown` (pull po digestu) | Korišten **lokalni** `.RepoDigests` digest | Koristi se **`'{{.Digest}}'`** (registryjev) |
 | Ispisuje ime varijable umjesto vrijednosti (`X=X`) | Fali **`$`** | `$ime` = vrijednost; bez `$` = goli tekst |
 | Drugi build pokaže staru vrijednost build arga | **Keš** pokupio stari layer | **`--no-cache`** |
-| `checking on sources ... no such file` | Krivi **kontekst** ili krivo ime datoteke u COPY | Pročitaj putanju koju traži, usporedi sa stvarnim |
-| `cd lo2-XX: No such file` | Bio si izvan krova; mapa nije tu | Počni svaki zadatak s `mkdir -p ~/lo2-XX && cd ~/lo2-XX` |
-| Jedan `&` umjesto `&&` (npr. `mkdir & cd`) | `&` = pokreni u pozadini i NE čekaj | Koristi **`&&`** (čekaj uspjeh pa nastavi) |
-| `exit status 127` | **Command not found** (krivo ime komande, npr. `app-get`) | Ispravi ime komande (`apt-get`) |
-| `exit status 100` | **apt greška** (krivo ime PAKETA, npr. `ca-certificated`, ili fali `apt-get update`) | Ispravi ime paketa / dodaj update |
-| `Unable to locate package` / `no such package` (s pinom) | Repo drži samo trenutnu verziju; pin zastario | Otkrij dostupnu (`apk list`/`apt-cache policy`) pa pinaj |
+| `checking on sources ... no such file` | Krivi **kontekst** ili krivo ime datoteke u COPY | Pročitati putanju koju traži, usporediti sa stvarnim |
+| `cd lo2-XX: No such file` | Trenutna mapa izvan krova; ciljana mapa ne postoji | Svaki zadatak počinje s `mkdir -p ~/lo2-XX && cd ~/lo2-XX` |
+| Jedan `&` umjesto `&&` (npr. `mkdir & cd`) | `&` = pokreće u pozadini i NE čeka | Koristi se **`&&`** (čeka uspjeh pa nastavlja) |
+| `exit status 127` | **Command not found** (krivo ime komande, npr. `app-get`) | Ispraviti ime komande (`apt-get`) |
+| `exit status 100` | **apt greška** (krivo ime PAKETA, npr. `ca-certificated`, ili fali `apt-get update`) | Ispraviti ime paketa / dodati update |
+| `Unable to locate package` / `no such package` (s pinom) | Repo drži samo trenutnu verziju; pin zastario | Otkriti dostupnu (`apk list`/`apt-cache policy`) pa pinati |
 | `--pasword-stdin` | Tipfeler (jedno `s`) | `--password-stdin` |
 | `docker-io` umjesto `docker.io` | Crtica umjesto točke | `docker.io` |
-| `access denied` pri push-u | Login istekao / krivi namespace | Ponovi `podman login`; provjeri `registar/račun` u tagu |
-| `Please select an image` (ponudi registryje) nakon pada builda | Image ne postoji lokalno, pa `run` pita s kojeg registra povući | **Ctrl+C, ne biraj** — prvo popravi build |
-| `debconf: unable to initialize frontend: Dialog` | apt nema interaktivni terminal | **Bezopasno** — ignoriraj, build prolazi |
+| `access denied` pri push-u | Login istekao / krivi namespace | Ponoviti `podman login`; provjeriti `registar/račun` u tagu |
+| `Please select an image` (ponudi registryje) nakon pada builda | Image ne postoji lokalno, pa `run` pita s kojeg registra povući | **Ctrl+C, bez odabira** — prvo popraviti build |
+| `debconf: unable to initialize frontend: Dialog` | apt nema interaktivni terminal | **Bezopasno** — ignorirati, build prolazi |
 
 ---
 
-# 📌 BRZA REFERENCA — LO2 komande
+## Brza referenca — LO2 komande
 
 ```bash
 # BUILD
@@ -916,5 +931,5 @@ podman image prune                                  # obriši sve dangling
 
 ---
 
-> **LO2 gotov — svih 23 zadataka hands-on. ✅**
-> Sljedeće: **LO3** (pods, compose, mreže, secrets, volumes, `generate kube`) — most prema Kubernetesu (LO4).
+> LO2 obuhvaća svih 23 zadataka.
+> Sljedeći ishod: LO3 (Podovi, compose, mreže, tajne, volumeni, `generate kube`) — most prema Kubernetesu (LO4).
