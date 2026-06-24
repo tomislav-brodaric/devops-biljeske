@@ -3,7 +3,7 @@
 > **LO6** ("Evaluate the use of selected container orchestration systems" — Procjena uporabe odabranih sustava za orkestraciju kontejnera) je teorijski ishod. Ima 23 pitanja iz službenog PDF-a (str. 10), istim redoslijedom.
 > **Format svakog pitanja:** kontekst, pa argumenti za obje strane, pa **obranjiv stav** (onaj koji možeš braniti pred ispitivačem), pa **ispitna kuka** (jedna rečenica za zapamtiti).
 > **Stil:** svaka kratica je objašnjena, svaki pojam definiran, sve napisano riječima (bez simbola).
-> Napredak: sva pitanja 1–23 gotova. Slijedi rječnik temeljnih pojmova, pa rječnik temeljnih pojmova (container, image, Podman, Docker, Kubernetes, terminal, Linux).
+> Napredak: sva pitanja 1–23 gotova, plus okvir za odlučivanje i pregledi Docker Swarma i k3s-a. Temeljni pojmovi su u zasebnoj datoteci `DevOps-Temeljni-pojmovi.md`.
 
 ---
 
@@ -475,6 +475,51 @@ Velike i regulirane tvrtke upravo to traže (pouzdanost, sigurnost, podrška).
 
 ---
 
-# LO6 — sva pitanja (1–23) napisana ✓
+## Dodatne teorijske teme — pregled Docker Swarma i k3s-a
 
-Slijedi: rječnik temeljnih pojmova (container, image, Podman, Docker, Kubernetes, terminal, Linux).
+> Ove dvije teme nisu među dvadeset i tri pitanja iz PDF-a, ali ih profesor izričito navodi kao dio LO6 (LO6 je čisto teorijski i pokriva širi skup tema, uključujući pregled Docker Swarma i k3s-a). Pisano u istom pristupačnom stilu, bez simbola.
+
+### Docker Swarm — pregled
+
+**Pojam:** Docker Swarm je Dockerov vlastiti, ugrađeni sustav za orkestraciju kontejnera preko više računala. Orkestracija znači automatsko raspoređivanje, pokretanje, skaliranje i oporavak kontejnera. Više računala se udruži u takozvani roj (swarm).
+
+**Kako radi:**
+- Računala u roju imaju dvije uloge: **upravljačka računala** (manager, donose odluke i drže željeno stanje) i **radna računala** (worker, pokreću kontejnere).
+- Aplikacija se opisuje kao **servis** sa željenim brojem primjeraka (replika). Swarm rasporedi te replike po radnim računalima i pazi da ih uvijek ima onoliko koliko je zadano. Ako neka padne, podigne novu (samoizlječenje).
+- Koristi iste Docker naredbe i pojmove koji se već poznaju, pa je prag ulaska nizak.
+- Ima ugrađeno otkrivanje servisa, raspodjelu prometa i preklopnu mrežu preko više računala.
+
+**Odnos prema Kubernetesu:** Docker Swarm je **jednostavniji za postaviti i naučiti**, ali ima **manje mogućnosti** od Kubernetesa (manje opcija za skaliranje, mreže, pravila i proširenja). Kubernetes je složeniji, ali bogatiji i postao je industrijski standard.
+
+**Zašto je danas uglavnom nadiđen:** Zajednica i razvoj uglavnom su se preselili na Kubernetes. Swarm dobiva malo novih značajki i sve ga manje organizacija bira za nove sustave, pa se često spominje kao naslijeđe iz kojeg se seli na Kubernetes (vidi pitanje 19).
+
+**Kada ga izabrati:** Docker Swarm je razuman za male, jednostavne postavke i timove koji već znaju Docker i žele brz, lak ulaz u orkestraciju preko nekoliko računala. Za veće, složenije ili dugoročne sustave Kubernetes je sigurniji izbor zbog mogućnosti i podrške zajednice.
+
+**Ispitna kuka:** Docker Swarm je Dockerov jednostavni ugrađeni orkestrator (upravljačka i radna računala, servisi s replikama, iste Docker naredbe), lak za naučiti ali siromašniji od Kubernetesa i danas uglavnom nadiđen.
+
+### k3s — pregled
+
+**Pojam:** k3s je **lagana, potpuna inačica Kubernetesa**. To je i dalje pravi, certificirani Kubernetes (ista sučelja i naredbe, isti kubectl), samo zapakiran tako da troši mnogo manje resursa. Razvio ga je Rancher (danas dio tvrtke SUSE).
+
+**Po čemu se razlikuje od punog Kubernetesa:**
+- Dolazi kao **jedna mala izvršna datoteka** i brzo se postavlja.
+- Troši **znatno manje memorije i procesora**, jer su neki teški dijelovi zamijenjeni lakšima (na primjer jednostavnija ugrađena pohrana stanja umjesto teže zadane), a nepotrebni dodaci su izbačeni.
+- Iako je lakši po resursima, **prema aplikacijama se ponaša kao obični Kubernetes** — ono što se napiše za k3s radi i na punom Kubernetesu i obrnuto.
+
+**Tipične namjene:**
+- **Rub mreže** i mali, udaljeni uređaji.
+- **Internet stvari** (uređaji s malo resursa).
+- **Razvoj i učenje** (brz, lagan klaster na vlastitom računalu).
+- **Mali lokalni poslužitelji**, gdje bi puni Kubernetes bio pretjeran.
+
+**Odnos prema punom Kubernetesu:** k3s nije drugi, odvojeni sustav, nego **isti Kubernetes u lakšem pakiranju**. Bira se kad trebaju mogućnosti Kubernetesa, ali ne i njegov puni resursni teret.
+
+**Kada ga izabrati:** za male, lokalne ili resursno ograničene postavke k3s daje gotovo sve što i puni Kubernetes uz mnogo manji teret, pa je često bolji izbor. Puni Kubernetes vrijedi kad se stvarno treba njegova puna skala i napredne mogućnosti (vidi pitanje 10).
+
+**Ispitna kuka:** k3s je lagana ali potpuna inačica Kubernetesa (jedna mala datoteka, mnogo manje resursa, isti kubectl), za rub mreže, internet stvari, razvoj i male poslužitelje. Puni Kubernetes je pretjeran tamo gdje k3s zadovoljava.
+
+---
+
+# LO6 — gotovo ✓: sva pitanja (1–23), okvir za odlučivanje, te pregledi Docker Swarma i k3s-a
+
+Temeljni pojmovi (container, image, Podman, Docker, Kubernetes, terminal, Linux) su u zasebnoj datoteci `DevOps-Temeljni-pojmovi.md`.
