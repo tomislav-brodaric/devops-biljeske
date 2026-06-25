@@ -99,3 +99,4 @@ LO6 je teorijski ishod i piše se (kao i ostatak ispita) uz otvorene bilješke. 
 - **Red Hat Academy**
 - **Infoeduka**
 - Provjeriti **pristup mreži (VPN)** i ulaz u ispitno okruženje dan prije ispita.
+- https://github.com/vknue/DOCUMENTATIONDEVOPS
